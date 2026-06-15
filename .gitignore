@@ -1,0 +1,7 @@
+CLAUDE.md
+.idea
+venv
+*.so
+data/
+models/
+results/
