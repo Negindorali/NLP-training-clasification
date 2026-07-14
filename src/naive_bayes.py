@@ -8,7 +8,12 @@ NEUTRAL_LABEL = 2
 
 class MultinomialNB:
 
-    def __init__(self, neutral_threshold=None):
+    def __init__(self, alpha=1.0, neutral_threshold=None):
+        # alpha is the Laplace/Lidstone smoothing strength: every word starts
+        # with alpha pseudo-occurrences per class, so words seen only a few
+        # times get pulled toward "equally likely in every class". Larger
+        # alpha = rare words sway the prediction less.
+        self.alpha = alpha
         # If set (e.g. 0.3), predictions where the gap between the top two
         # class probabilities is smaller than this are reported as neutral.
         # If None, the model behaves as a plain binary classifier.
@@ -29,8 +34,8 @@ class MultinomialNB:
 
             self.class_probs[c] = len(rows_c) / n_docs
 
-            # Laplace (add-one) smoothing so unseen words don't zero out a class
-            word_count = [1.0] * vocab_size
+            # Laplace smoothing so unseen words don't zero out a class
+            word_count = [float(self.alpha)] * vocab_size
 
             for row in rows_c:
                 for j in range(vocab_size):

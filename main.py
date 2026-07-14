@@ -5,7 +5,7 @@ import time
 from src.sentence_loader import SentenceDatasetLoader
 from src.pipeline import SentimentPipeline
 from src.naive_bayes import NEUTRAL_LABEL
-from src.metrics import accuracy, confusion_matrix
+from src.metrics import accuracy, confusion_matrix, precision_recall_f1
 
 
 # 0 = Negative, 1 = Positive (the only labels in the data),
@@ -121,6 +121,20 @@ def show_evaluation(pipeline, test_texts, test_labels):
               + Color.dim("(Neutral predictions excluded)"))
     print(INDENT + f"Neutral predictions        : {neutral_count} / {len(predictions)}")
 
+    # per-class precision / recall / F1 (neutral predictions count as wrong)
+    per_class, macro = precision_recall_f1(test_labels, predictions)
+    print()
+    print(INDENT + Color.dim("Per-class metrics (Neutral predictions count as wrong)"))
+    print(INDENT + f"{'':>10} {'Precision':>10} {'Recall':>10} {'F1-score':>10} {'Support':>9}")
+    for c in sorted(per_class):
+        m = per_class[c]
+        print(INDENT + f"{LABEL_NAMES.get(c, c):>10} "
+              f"{m['precision'] * 100:9.1f}% {m['recall'] * 100:9.1f}% "
+              f"{m['f1'] * 100:9.1f}% {m['support']:>9}")
+    print(INDENT + f"{'macro avg':>10} "
+          f"{macro['precision'] * 100:9.1f}% {macro['recall'] * 100:9.1f}% "
+          f"{macro['f1'] * 100:9.1f}%")
+
     # confusion matrix
     matrix, labels = confusion_matrix(test_labels, predictions)
     print()
@@ -158,6 +172,31 @@ def show_top_words(pipeline, top_n=12):
     print()
 
 
+def show_mistakes(pipeline, test_texts, test_labels, top_n=10):
+    """Show test sentences the model got wrong (Neutral doesn't count:
+    it is 'not sure', not a wrong pick, so it is only tallied)."""
+
+    print()
+    print(INDENT + Color.title(f"Misclassified test sentences (first {top_n})"))
+    print(INDENT + RULE)
+
+    predictions = pipeline.predict(test_texts)
+
+    wrong = [(text, t, p) for text, t, p in zip(test_texts, test_labels, predictions)
+             if p != t and p != NEUTRAL_LABEL]
+    neutral_count = sum(1 for p in predictions if p == NEUTRAL_LABEL)
+
+    print(INDENT + Color.dim(f"{len(wrong)} confidently wrong, "
+                             f"{neutral_count} flagged Neutral (not counted here)"))
+    print()
+
+    for i, (text, t, p) in enumerate(wrong[:top_n], 1):
+        print(INDENT + f"{i:>2}. {text.strip()}")
+        print(INDENT + "    true: " + label_badge(t) +
+              "   predicted: " + label_badge(p))
+        print()
+
+
 def print_help(pipeline):
     print()
     print(INDENT + Color.title("How to use"))
@@ -166,6 +205,7 @@ def print_help(pipeline):
     print(INDENT + Color.title("Commands"))
     print(INDENT + "  :eval              full evaluation on the Yelp test set")
     print(INDENT + "  :words             most informative words per class")
+    print(INDENT + "  :mistakes [n]      show n misclassified test sentences (default 10)")
     print(INDENT + f"  :threshold <n>     set the Neutral threshold "
           f"(now {pipeline.neutral_threshold})")
     print(INDENT + "  :help              show this help")
@@ -217,6 +257,9 @@ def main():
     elapsed = time.time() - start
     print(Color.green("done") +
           Color.dim(f"  ({pipeline.vocab.size()} words, {elapsed:.1f}s)"))
+    print(INDENT + Color.dim(f"count matrix: {len(train_texts)} x "
+                             f"{pipeline.vocab.size()} (train)   ·   "
+                             f"{len(test_texts)} x {pipeline.vocab.size()} (test)"))
 
     quick = accuracy(test_labels, pipeline.predict(test_texts))
     print(INDENT + Color.dim(f"test accuracy: {quick * 100:.1f}%   "
@@ -244,6 +287,15 @@ def main():
             continue
         if command == ":words":
             show_top_words(pipeline)
+            continue
+        if command.startswith(":mistakes"):
+            parts = stripped.split(None, 1)
+            try:
+                count = int(parts[1]) if len(parts) > 1 else 10
+            except ValueError:
+                print(INDENT + Color.red("  usage: :mistakes 10"))
+                continue
+            show_mistakes(pipeline, test_texts, test_labels, top_n=count)
             continue
         if command.startswith(":threshold"):
             parts = stripped.split(None, 1)
